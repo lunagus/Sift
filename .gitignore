@@ -1,0 +1,64 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+*.pdb
+*.egg-info/
+.env
+.env.*
+.venv/
+venv/
+
+# Jupyter
+.ipynb_checkpoints
+
+# Node.js
+node_modules/
+.npm/
+.next/
+
+# Build
+build/
+dist/
+*.log
+*.sqlite3
+*.db
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.bak
+*.tmp
+
+# Frontend
+# Next.js
+.next/
+# local env files
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+# misc
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Tailwind
+*.css.d.ts
+
+# Mac
+.DS_Store
+
+# Windows
+Thumbs.db
+
+# Others
+coverage/ 
