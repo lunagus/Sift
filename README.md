@@ -176,12 +176,12 @@ npm run dev
 
 ## 🔮 Future Implementations
 
-- [ ] Export scraped data to CSV/Excel
+- [✅] Export scraped data to CSV/Excel
 - [ ] Image scraping support
 - [ ] Multi-table joining & relational queries
 - [ ] Custom prompt templates per domain (e.g. job boards vs product pages)
-- [ ] Playwright-based scraping for JS-heavy websites
-- [ ] Rate limiting and retry strategies to prevent bans
+- [✅] Playwright-based scraping for JS-heavy websites
+- [✅] Rate limiting and retry strategies to prevent bans
 - [ ] Dataset versioning or history tracking 
 - [ ] Support for periodical repeating jobs
 

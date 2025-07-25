@@ -26,6 +26,10 @@ import {
   TableRow,
   TableCell,
   TableBody,
+  Menu,
+  Checkbox,
+  OutlinedInput,
+  ListItemText,
 } from "@mui/material"
 import {
   BarChart,
@@ -46,7 +50,7 @@ import {
   Area,
   AreaChart,
 } from "recharts"
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { 
   BarChart as BarIcon, 
   ShowChart, 
@@ -54,8 +58,27 @@ import {
   ScatterPlot,
   ExpandMore,
   Settings,
-  Refresh
+  Refresh,
+  Download,
+  RestartAlt,
+  TableView,
+  Palette,
+  Label,
+  FileCopy
 } from "@mui/icons-material"
+import ColumnSelector from "./ColumnSelector"
+import DownloadIcon from "@mui/icons-material/Download"
+import RestartAltIcon from "@mui/icons-material/RestartAlt"
+import TableViewIcon from "@mui/icons-material/TableView"
+import PaletteIcon from "@mui/icons-material/Palette"
+import LabelIcon from "@mui/icons-material/Label"
+import FileCopyIcon from "@mui/icons-material/FileCopy"
+import { useRef } from "react"
+import { useTheme } from "@mui/material/styles"
+import DataExportMenu from "./DataExportMenu"
+import RowSelector from "./RowSelector"
+import AIInsights from "./AIInsights"
+import SmartToyIcon from "@mui/icons-material/SmartToy"
 
 interface EnhancedChartViewProps {
   tables: Record<string, any>[][]
@@ -76,6 +99,10 @@ const CHART_COLORS = [
 ]
 
 export default function EnhancedChartView({ tables }: EnhancedChartViewProps) {
+  const theme = useTheme();
+  const isDark = theme.palette.mode === 'dark';
+  const cellBg = isDark ? '#232323' : '#fff';
+  const cellColor = isDark ? '#fff' : '#111';
   const [chartType, setChartType] = useState<"bar" | "line" | "pie" | "scatter" | "area">("bar")
   const [selectedTable, setSelectedTable] = useState(0)
   const [selectedXAxis, setSelectedXAxis] = useState<string>("")
@@ -98,6 +125,49 @@ export default function EnhancedChartView({ tables }: EnhancedChartViewProps) {
   const [sortColumn, setSortColumn] = useState<string>("")
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc")
   const [showDataPreview, setShowDataPreview] = useState<boolean>(false)
+  const [columnSelectorAnchor, setColumnSelectorAnchor] = useState<null | HTMLElement>(null)
+  const [selectedColumnsByTable, setSelectedColumnsByTable] = useState<Record<number, string[]>>({})
+  const [showDataTable, setShowDataTable] = useState(false)
+  const [colorblindMode, setColorblindMode] = useState(false)
+  const [showDataLabels, setShowDataLabels] = useState(false)
+  const [hiddenSeries, setHiddenSeries] = useState<string[]>([])
+  const chartRef = useRef<HTMLDivElement>(null)
+
+  // New: robust row selection and compare mode
+  const [compareMode, setCompareMode] = useState(false)
+  const [selectedRows, setSelectedRows] = useState<number[]>([])
+  // Multi-select for X and Y axes
+  const [multiXAxis, setMultiXAxis] = useState<string[]>([])
+  const [multiYAxis, setMultiYAxis] = useState<string[]>([])
+
+  const currentTable = tables[selectedTable] || []
+  const columns = Object.keys(currentTable[0] || {})
+  const selectedColumns = selectedColumnsByTable[selectedTable] || columns
+
+  // Compute column types for display
+  const columnTypes: Record<string, string> = useMemo(() => {
+    const types: Record<string, string> = {}
+    for (const col of columns) {
+      const sample = currentTable.find((row) => row[col] != null)?.[col]
+      if (sample == null) {
+        types[col] = "string"
+        continue
+      }
+      const cleanValue = String(sample).replace(/[^0-9.-]/g, "")
+      if (!isNaN(Number(cleanValue)) && cleanValue !== "") types[col] = "number"
+      else if (String(sample).match(/^\d{4}-\d{2}-\d{2}/)) types[col] = "date"
+      else if (String(sample).includes("$") || String(sample).includes("€") || String(sample).includes("£")) types[col] = "price"
+      else types[col] = "string"
+    }
+    return types
+  }, [columns, currentTable])
+
+  // Only use selected columns for charting
+  const chartColumns = selectedColumns
+  const numericColumns = chartColumns.filter((col) =>
+    currentTable.some((row) => !isNaN(Number(row[col])) && row[col] !== ""),
+  )
+  const stringColumns = chartColumns.filter((col) => !numericColumns.includes(col))
 
   if (!tables || tables.length === 0) {
     return (
@@ -113,14 +183,15 @@ export default function EnhancedChartView({ tables }: EnhancedChartViewProps) {
     )
   }
 
-  const currentTable = tables[selectedTable] || []
-  if (currentTable.length === 0) return null
-
-  const columns = Object.keys(currentTable[0])
-  const numericColumns = columns.filter((col) =>
-    currentTable.some((row) => !isNaN(Number(row[col])) && row[col] !== ""),
-  )
-  const stringColumns = columns.filter((col) => !numericColumns.includes(col))
+  const handleOpenColumnSelector = (e: React.MouseEvent<HTMLElement>) => setColumnSelectorAnchor(e.currentTarget)
+  const handleCloseColumnSelector = () => setColumnSelectorAnchor(null)
+  const handleColumnSelectionChange = (cols: string[]) => {
+    setSelectedColumnsByTable((prev) => ({ ...prev, [selectedTable]: cols }))
+    setColumnSelectorAnchor(null)
+    // Reset axis selections if they are no longer valid
+    if (!cols.includes(selectedXAxis)) setSelectedXAxis(cols[0] || "")
+    if (!cols.includes(selectedYAxis)) setSelectedYAxis("")
+  }
 
   // Function to process and select data points
   const processDataSelection = () => {
@@ -189,6 +260,13 @@ export default function EnhancedChartView({ tables }: EnhancedChartViewProps) {
       default:
         return processedData.slice(0, dataPointsLimit)
     }
+
+    // If compareMode, only include selectedRows
+    if (compareMode && selectedRows.length > 0) {
+      processedData = processedData.filter((_, idx) => selectedRows.includes(idx))
+    }
+
+    return processedData
   }
 
   // Function to get data preview
@@ -217,6 +295,40 @@ export default function EnhancedChartView({ tables }: EnhancedChartViewProps) {
     ),
   }))
 
+  // Color palettes
+  const COLORBLIND_PALETTE = [
+    "#0072B2", "#E69F00", "#009E73", "#F0E442", "#56B4E9", "#D55E00", "#CC79A7", "#999999"
+  ]
+  const palette = colorblindMode ? COLORBLIND_PALETTE : CHART_COLORS
+
+  // Download chart as PNG
+  const handleDownloadChart = async () => {
+    if (!chartRef.current) return
+    const html2canvas = (await import("html2canvas")).default
+    const canvas = await html2canvas(chartRef.current)
+    const url = canvas.toDataURL("image/png")
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `sift-chart-${selectedTable + 1}.png`
+    a.click()
+  }
+
+  // Copy chart data as TSV
+  const handleCopyChartData = () => {
+    if (!chartColumns.length || !chartData.length) return
+    const headers = chartColumns
+    const tsvRows = [headers.join("\t")]
+    chartData.forEach((row) => {
+      tsvRows.push(headers.map((col) => (row[col] ?? "")).join("\t"))
+    })
+    navigator.clipboard.writeText(tsvRows.join("\n"))
+  }
+
+  // Toggle series visibility
+  const handleToggleSeries = (col: string) => {
+    setHiddenSeries((prev) => prev.includes(col) ? prev.filter((c) => c !== col) : [...prev, col])
+  }
+
   const renderChart = () => {
     const commonProps = {
       width: "100%",
@@ -227,14 +339,15 @@ export default function EnhancedChartView({ tables }: EnhancedChartViewProps) {
       backgroundColor: "#1f2937",
       border: "1px solid #374151",
       borderRadius: "8px",
-      fontSize: "14px",
+      fontSize: "16px",
       color: "#f9fafb",
     }
 
     const axisStyle = {
       stroke: "#9ca3af",
-      fontSize: 14,
+      fontSize: 18,
     }
+    const legendStyle = { fontSize: 18 }
 
     switch (chartType) {
       case "bar":
@@ -243,7 +356,7 @@ export default function EnhancedChartView({ tables }: EnhancedChartViewProps) {
             <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 80 }}>
               {showGrid && <CartesianGrid strokeDasharray="3 3" stroke="#374151" />}
               <XAxis
-                dataKey={selectedXAxis || "name"}
+                dataKey={multiXAxis.length > 0 ? multiXAxis[0] : selectedXAxis || "name"}
                 {...axisStyle}
                 angle={-45}
                 textAnchor="end"
@@ -251,9 +364,15 @@ export default function EnhancedChartView({ tables }: EnhancedChartViewProps) {
               />
               <YAxis {...axisStyle} />
               <Tooltip contentStyle={tooltipStyle} />
-              {showLegend && <Legend />}
-              {(selectedYAxis ? [selectedYAxis] : numericColumns.slice(0, maxColumns)).map((col, index) => (
-                <Bar key={col} dataKey={col} fill={CHART_COLORS[index % CHART_COLORS.length]} radius={[4, 4, 0, 0]} />
+              {showLegend && <Legend onClick={(e: any) => handleToggleSeries(e.dataKey)} wrapperStyle={legendStyle} />}
+              {(multiYAxis.length > 0 ? multiYAxis : numericColumns.filter(col => !hiddenSeries.includes(col)).slice(0, maxColumns)).map((col, index) => (
+                <Bar
+                  key={col}
+                  dataKey={col}
+                  fill={palette[index % palette.length]}
+                  radius={[4, 4, 0, 0]}
+                  label={showDataLabels ? { position: "top", fontSize: 14 } : false}
+                />
               ))}
             </BarChart>
           </ResponsiveContainer>
@@ -265,7 +384,7 @@ export default function EnhancedChartView({ tables }: EnhancedChartViewProps) {
             <LineChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 80 }}>
               {showGrid && <CartesianGrid strokeDasharray="3 3" stroke="#374151" />}
               <XAxis
-                dataKey={selectedXAxis || "name"}
+                dataKey={multiXAxis.length > 0 ? multiXAxis[0] : selectedXAxis || "name"}
                 {...axisStyle}
                 angle={-45}
                 textAnchor="end"
@@ -273,15 +392,16 @@ export default function EnhancedChartView({ tables }: EnhancedChartViewProps) {
               />
               <YAxis {...axisStyle} />
               <Tooltip contentStyle={tooltipStyle} />
-              {showLegend && <Legend />}
-              {(selectedYAxis ? [selectedYAxis] : numericColumns.slice(0, maxColumns)).map((col, index) => (
+              {showLegend && <Legend onClick={(e: any) => handleToggleSeries(e.dataKey)} wrapperStyle={legendStyle} />}
+              {(multiYAxis.length > 0 ? multiYAxis : numericColumns.filter(col => !hiddenSeries.includes(col)).slice(0, maxColumns)).map((col, index) => (
                 <Line
                   key={col}
                   type="monotone"
                   dataKey={col}
-                  stroke={CHART_COLORS[index % CHART_COLORS.length]}
+                  stroke={palette[index % palette.length]}
                   strokeWidth={3}
                   dot={{ r: 6 }}
+                  label={showDataLabels ? { position: "top", fontSize: 14 } : false}
                 />
               ))}
             </LineChart>
@@ -294,7 +414,7 @@ export default function EnhancedChartView({ tables }: EnhancedChartViewProps) {
             <AreaChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 80 }}>
               {showGrid && <CartesianGrid strokeDasharray="3 3" stroke="#374151" />}
               <XAxis
-                dataKey={selectedXAxis || "name"}
+                dataKey={multiXAxis.length > 0 ? multiXAxis[0] : selectedXAxis || "name"}
                 {...axisStyle}
                 angle={-45}
                 textAnchor="end"
@@ -302,15 +422,15 @@ export default function EnhancedChartView({ tables }: EnhancedChartViewProps) {
               />
               <YAxis {...axisStyle} />
               <Tooltip contentStyle={tooltipStyle} />
-              {showLegend && <Legend />}
-              {(selectedYAxis ? [selectedYAxis] : numericColumns.slice(0, Math.min(maxColumns, 4))).map((col, index) => (
+              {showLegend && <Legend onClick={(e: any) => handleToggleSeries(e.dataKey)} wrapperStyle={legendStyle} />}
+              {(multiYAxis.length > 0 ? multiYAxis : numericColumns.filter(col => !hiddenSeries.includes(col)).slice(0, Math.min(maxColumns, 4))).map((col, index) => (
                 <Area
                   key={col}
                   type="monotone"
                   dataKey={col}
                   stackId="1"
-                  stroke={CHART_COLORS[index % CHART_COLORS.length]}
-                  fill={CHART_COLORS[index % CHART_COLORS.length]}
+                  stroke={palette[index % palette.length]}
+                  fill={palette[index % palette.length]}
                   fillOpacity={0.7}
                 />
               ))}
@@ -319,8 +439,8 @@ export default function EnhancedChartView({ tables }: EnhancedChartViewProps) {
         )
 
       case "scatter":
-        const xCol = selectedXAxis || numericColumns[0]
-        const yCol = selectedYAxis || numericColumns[1]
+        const xCol = multiXAxis.length > 0 ? multiXAxis[0] : selectedXAxis || numericColumns[0]
+        const yCol = multiYAxis.length > 0 ? multiYAxis[0] : selectedYAxis || numericColumns[1]
 
         return (
           <ResponsiveContainer {...commonProps}>
@@ -329,8 +449,8 @@ export default function EnhancedChartView({ tables }: EnhancedChartViewProps) {
               <XAxis dataKey={xCol} {...axisStyle} type="number" domain={["dataMin", "dataMax"]} />
               <YAxis dataKey={yCol} {...axisStyle} type="number" domain={["dataMin", "dataMax"]} />
               <Tooltip contentStyle={tooltipStyle} />
-              {showLegend && <Legend />}
-              <Scatter dataKey={yCol} fill={CHART_COLORS[0]} />
+              {showLegend && <Legend onClick={(e: any) => handleToggleSeries(e.dataKey)} wrapperStyle={legendStyle} />}
+              <Scatter dataKey={yCol} fill={palette[0]} />
             </ScatterChart>
           </ResponsiveContainer>
         )
@@ -338,7 +458,7 @@ export default function EnhancedChartView({ tables }: EnhancedChartViewProps) {
       case "pie":
         const pieData = chartData.slice(0, Math.min(dataPointsLimit, 10)).map((item) => ({
           name: item.name,
-          value: (item as any)[selectedYAxis || numericColumns[0]] || 0,
+          value: (item as any)[multiYAxis.length > 0 ? multiYAxis[0] : selectedYAxis || numericColumns[0]] || 0,
         }))
 
         return (
@@ -355,11 +475,11 @@ export default function EnhancedChartView({ tables }: EnhancedChartViewProps) {
                 dataKey="value"
               >
                 {pieData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                  <Cell key={`cell-${index}`} fill={palette[index % palette.length]} />
                 ))}
               </Pie>
               <Tooltip contentStyle={tooltipStyle} />
-              {showLegend && <Legend />}
+              {showLegend && <Legend onClick={(e: any) => handleToggleSeries(e.dataKey)} wrapperStyle={legendStyle} />}
             </PieChart>
           </ResponsiveContainer>
         )
@@ -385,7 +505,16 @@ export default function EnhancedChartView({ tables }: EnhancedChartViewProps) {
     setSortColumn("")
     setSortOrder("desc")
     setShowDataPreview(false)
+    setHiddenSeries([]) // Reset hidden series
+    setCompareMode(false) // Reset compare mode
+    setSelectedRows([]) // Clear selected rows
+    setMultiXAxis([]) // Clear multi-select X axis
+    setMultiYAxis([]) // Clear multi-select Y axis
   }
+
+  const selectedRowsToExport = selectedRows.length > 0 ? selectedRows.map(i => chartData[i]) : chartData
+
+  const [aiOpen, setAiOpen] = useState(false)
 
   return (
     <Container maxWidth={false} sx={{ py: 4, px: 4 }}>
@@ -400,21 +529,24 @@ export default function EnhancedChartView({ tables }: EnhancedChartViewProps) {
             </Typography>
           </Box>
           <Box sx={{ display: "flex", gap: 1 }}>
-            <Button
-              variant="outlined"
-              startIcon={<Settings />}
-              onClick={() => setShowSettings(!showSettings)}
-              size="small"
-            >
-              Settings
+            <DataExportMenu data={selectedRowsToExport} columns={chartColumns} fileName={`sift-chart-${selectedTable + 1}`} exportOptions={["csv", "json", "txt", "copy", "print"]} />
+            <Button variant="outlined" startIcon={<RestartAltIcon />} onClick={resetSettings} size="small">
+              Reset Chart
             </Button>
-            <Button
-              variant="outlined"
-              startIcon={<Refresh />}
-              onClick={resetSettings}
-              size="small"
-            >
-              Reset
+            <Button variant="outlined" startIcon={<TableViewIcon />} onClick={() => setShowDataTable((v) => !v)} size="small">
+              {showDataTable ? "Hide Data Table" : "Show Data Table"}
+            </Button>
+            <Button variant="outlined" startIcon={<PaletteIcon />} onClick={() => setColorblindMode((v) => !v)} size="small">
+              {colorblindMode ? "Default Colors" : "Colorblind Mode"}
+            </Button>
+            <Button variant="outlined" startIcon={<LabelIcon />} onClick={() => setShowDataLabels((v) => !v)} size="small">
+              {showDataLabels ? "Hide Labels" : "Show Labels"}
+            </Button>
+            <Button variant="outlined" startIcon={<Settings />} onClick={() => setShowSettings((v) => !v)} size="small">
+              {showSettings ? "Hide Settings" : "Show Settings"}
+            </Button>
+            <Button variant="outlined" startIcon={<Refresh />} onClick={() => setCompareMode((v) => !v)} size="small">
+              {compareMode ? "Exit Compare Mode" : "Compare Mode"}
             </Button>
           </Box>
         </Box>
@@ -668,11 +800,17 @@ export default function EnhancedChartView({ tables }: EnhancedChartViewProps) {
           <Grid item xs={12} sm={6} md={3}>
             <FormControl fullWidth>
               <InputLabel>X-Axis</InputLabel>
-              <Select value={selectedXAxis} label="X-Axis" onChange={(e) => setSelectedXAxis(e.target.value)}>
-                <MenuItem value="">Auto</MenuItem>
-                {columns.map((col) => (
+              <Select
+                multiple
+                value={multiXAxis}
+                onChange={(e) => setMultiXAxis(e.target.value as string[])}
+                input={<OutlinedInput label="X-Axis" />}
+                renderValue={(selected) => selected.map(val => val).join(', ')}
+              >
+                {chartColumns.map((col) => (
                   <MenuItem key={col} value={col}>
-                    {col}
+                    <Checkbox checked={multiXAxis.includes(col)} />
+                    <ListItemText primary={col} />
                   </MenuItem>
                 ))}
               </Select>
@@ -682,17 +820,48 @@ export default function EnhancedChartView({ tables }: EnhancedChartViewProps) {
           <Grid item xs={12} sm={6} md={3}>
             <FormControl fullWidth>
               <InputLabel>Y-Axis</InputLabel>
-              <Select value={selectedYAxis} label="Y-Axis" onChange={(e) => setSelectedYAxis(e.target.value)}>
-                <MenuItem value="">All Numeric</MenuItem>
+              <Select
+                multiple
+                value={multiYAxis}
+                onChange={(e) => setMultiYAxis(e.target.value as string[])}
+                input={<OutlinedInput label="Y-Axis" />}
+                renderValue={(selected) => selected.map(val => val).join(', ')}
+              >
                 {numericColumns.map((col) => (
                   <MenuItem key={col} value={col}>
-                    {col}
+                    <Checkbox checked={multiYAxis.includes(col)} />
+                    <ListItemText primary={col} />
                   </MenuItem>
                 ))}
               </Select>
             </FormControl>
           </Grid>
         </Grid>
+
+        {/* Column Selector Button */}
+        <Box sx={{ display: "flex", justifyContent: "flex-end", mb: 2 }}>
+          <Button
+            variant="outlined"
+            onClick={handleOpenColumnSelector}
+            size="small"
+            sx={{ mr: 1 }}
+          >
+            Select Columns
+          </Button>
+          <Menu
+            anchorEl={columnSelectorAnchor}
+            open={Boolean(columnSelectorAnchor)}
+            onClose={handleCloseColumnSelector}
+          >
+            <ColumnSelector
+              columns={columns}
+              selectedColumns={selectedColumns}
+              onChange={handleColumnSelectionChange}
+              columnTypes={columnTypes}
+              minColumns={1}
+            />
+          </Menu>
+        </Box>
 
         {/* Chart Type Selector */}
         <Box sx={{ display: "flex", gap: 2, mb: 4, flexWrap: "wrap" }}>
@@ -731,26 +900,78 @@ export default function EnhancedChartView({ tables }: EnhancedChartViewProps) {
           {dataSelectionMode === "filtered" && (
             <Chip label={`Showing all filtered data`} color="primary" variant="outlined" size="medium" />
           )}
+          {compareMode && (
+            <Chip label={`Compare Mode: ${selectedRows.length} rows selected`} color="info" size="medium" />
+          )}
         </Box>
       </Box>
 
       {/* Chart Display - Full Width */}
       <Card sx={{ width: "100%" }}>
         <CardContent sx={{ p: 4 }}>
-          {numericColumns.length > 0 ? (
-            <Box sx={{ width: "100%", minHeight: chartHeight }}>{renderChart()}</Box>
-          ) : (
-            <Box sx={{ textAlign: "center", py: 8 }}>
-              <Typography variant="h6" color="text.secondary" sx={{ mb: 1 }}>
-                No numeric data found for visualization
+          <Box ref={chartRef} sx={{ width: "100%", minHeight: chartHeight }}>
+            {numericColumns.length > 0 ? (
+              renderChart()
+            ) : (
+              <Box sx={{ textAlign: "center", py: 8 }}>
+                <Typography variant="h6" color="text.secondary" sx={{ mb: 1 }}>
+                  No numeric data found for visualization
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Tables need numeric columns to create meaningful charts and graphs
+                </Typography>
+              </Box>
+            )}
+          </Box>
+          {showDataTable && (
+            <Box sx={{ mt: 4, overflowX: "auto" }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
+                Chart Data Table
               </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Tables need numeric columns to create meaningful charts and graphs
-              </Typography>
+              <RowSelector
+                rowCount={chartData.length}
+                selectedRows={selectedRows}
+                onChange={rows => setSelectedRows(rows)}
+              />
+              <Table size="small" sx={{ minWidth: 600 }}>
+                <TableHead>
+                  <TableRow>
+                    {chartColumns.map((col) => (
+                      <TableCell key={col} sx={{ fontWeight: 600, fontSize: "1rem", color: 'text.primary' }}>{col}</TableCell>
+                    ))}
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {chartData.slice(0, 50).map((row, i) => (
+                    <TableRow key={i}>
+                      {chartColumns.map((col) => (
+                        <TableCell key={col} sx={{ fontSize: "0.95rem", whiteSpace: "pre-line", color: cellColor, background: cellBg }}>
+                          {compareMode ? (
+                            <Checkbox
+                              checked={selectedRows.includes(i)}
+                              onChange={() => {
+                                setSelectedRows(prev => prev.includes(i) ? prev.filter(idx => idx !== i) : [...prev, i]);
+                              }}
+                            />
+                          ) : (
+                            row[col]
+                          )}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </Box>
           )}
         </CardContent>
       </Card>
+      <AIInsights open={aiOpen} onClose={() => setAiOpen(false)} context={{ blockType: "chart", blockData: chartData }} />
+      <Box sx={{ position: "fixed", bottom: 32, right: 32, zIndex: 1200 }}>
+        <Button variant="contained" color="primary" startIcon={<SmartToyIcon />} sx={{ borderRadius: "50%", minWidth: 64, minHeight: 64, boxShadow: 4 }} onClick={() => setAiOpen(true)}>
+          AI
+        </Button>
+      </Box>
     </Container>
   )
 }

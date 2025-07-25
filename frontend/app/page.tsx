@@ -15,7 +15,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null)
   const [results, setResults] = useState<ScrapeResponse | null>(null)
 
-  const handleScrape = async (url: string, question?: string) => {
+  const handleScrape = async (url: string, question?: string, method?: string) => {
     setLoading(true)
     setError(null)
     setResults(null)
@@ -26,7 +26,7 @@ export default function Home() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ url, question }),
+        body: JSON.stringify({ url, question, method }),
       })
 
       if (!response.ok) {

@@ -7,7 +7,7 @@ import { CardContent, TextField, Button, Box, Typography, Paper } from "@mui/mat
 import { Send, Refresh, Analytics } from "@mui/icons-material"
 
 interface ScrapeFormProps {
-  onSubmit: (url: string, question?: string) => void
+  onSubmit: (url: string, question?: string, method?: string) => void
   loading: boolean
   onReset: () => void
 }
@@ -16,6 +16,7 @@ export default function ScrapeForm({ onSubmit, loading, onReset }: ScrapeFormPro
   const [url, setUrl] = useState("")
   const [question, setQuestion] = useState("")
   const [urlError, setUrlError] = useState("")
+  const [method, setMethod] = useState<string>("httpx")
 
   const validateUrl = (url: string): boolean => {
     try {
@@ -40,7 +41,7 @@ export default function ScrapeForm({ onSubmit, loading, onReset }: ScrapeFormPro
     }
 
     setUrlError("")
-    onSubmit(url.trim(), question.trim() || undefined)
+    onSubmit(url.trim(), question.trim() || undefined, method)
   }
 
   const handleReset = () => {
@@ -145,6 +146,34 @@ export default function ScrapeForm({ onSubmit, loading, onReset }: ScrapeFormPro
                   },
                 }}
               />
+            </Box>
+
+            {/* Scraping Method Selector */}
+            <Box>
+              <Typography variant="h6" sx={{ fontWeight: 600, mb: 1, color: "text.primary" }}>
+                Scraping Method
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Choose the backend scraping engine. <b>Playwright</b> is best for JavaScript-heavy sites.
+              </Typography>
+              <Box sx={{ display: "flex", gap: 2 }}>
+                <Button
+                  variant={method === "httpx" ? "contained" : "outlined"}
+                  onClick={() => setMethod("httpx")}
+                  disabled={loading}
+                  size="large"
+                >
+                  httpx (Fast)
+                </Button>
+                <Button
+                  variant={method === "playwright" ? "contained" : "outlined"}
+                  onClick={() => setMethod("playwright")}
+                  disabled={loading}
+                  size="large"
+                >
+                  Playwright (Browser)
+                </Button>
+              </Box>
             </Box>
 
             {/* Action Buttons */}

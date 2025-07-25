@@ -11,14 +11,28 @@ import {
   Container,
   Chip,
   Grid,
+  Button,
+  TextField,
 } from "@mui/material"
-import { ExpandMore, TextFields, DataObject } from "@mui/icons-material"
+import { ExpandMore, TextFields, DataObject, FileCopy, Download } from "@mui/icons-material"
+import ColumnSelector from "./ColumnSelector"
+import { useState } from "react"
+import { useTheme } from "@mui/material/styles"
+import DataExportMenu from "./DataExportMenu"
 
 interface RawDataViewProps {
   tables: Record<string, any>[][]
 }
 
 export default function RawDataView({ tables }: RawDataViewProps) {
+  const theme = useTheme();
+  const isDark = theme.palette.mode === 'dark';
+  const codeBg = isDark ? '#232323' : '#fff';
+  const codeColor = isDark ? '#fff' : '#111';
+  const [searchTerm, setSearchTerm] = useState("")
+  const [selectedColumnsByTable, setSelectedColumnsByTable] = useState<Record<number, string[]>>({})
+  const [expandedRows, setExpandedRows] = useState<Record<number, Set<number>>>({})
+
   if (!tables || tables.length === 0) {
     return (
       <Container maxWidth={false} sx={{ py: 8, textAlign: "center" }}>
@@ -33,26 +47,49 @@ export default function RawDataView({ tables }: RawDataViewProps) {
     )
   }
 
-  const convertTableToText = (table: Record<string, any>[], tableIndex: number) => {
+  const convertTableToText = (table: Record<string, any>[], tableIndex: number, columns?: string[]) => {
     if (!table.length) return ""
-
-    const columns = Object.keys(table[0])
+    const cols = columns || Object.keys(table[0])
     let text = `TABLE ${tableIndex + 1} SUMMARY:\n`
     text += `Total Records: ${table.length}\n`
-    text += `Columns: ${columns.join(", ")}\n\n`
-
+    text += `Columns: ${cols.join(", ")}\n\n`
     text += "DETAILED DATA:\n"
     text += "=".repeat(50) + "\n\n"
-
     table.forEach((row, index) => {
       text += `Record ${index + 1}:\n`
-      columns.forEach((col) => {
+      cols.forEach((col) => {
         text += `  ${col}: ${row[col] || "N/A"}\n`
       })
       text += "\n"
     })
-
     return text
+  }
+
+  // Copy all logic
+  const handleCopyAll = (table: Record<string, any>[], tableIndex: number, columns: string[]) => {
+    navigator.clipboard.writeText(convertTableToText(table, tableIndex, columns))
+  }
+
+  // Download as TXT logic
+  const handleDownloadTxt = (table: Record<string, any>[], tableIndex: number, columns: string[]) => {
+    const content = convertTableToText(table, tableIndex, columns)
+    const blob = new Blob([content], { type: "text/plain" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `sift-raw-table-${tableIndex + 1}.txt`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  // Toggle row expansion
+  const handleToggleRow = (tableIndex: number, rowIndex: number) => {
+    setExpandedRows((prev) => {
+      const set = new Set(prev[tableIndex] || [])
+      if (set.has(rowIndex)) set.delete(rowIndex)
+      else set.add(rowIndex)
+      return { ...prev, [tableIndex]: set }
+    })
   }
 
   const generateSummary = (table: Record<string, any>[]) => {
@@ -69,7 +106,7 @@ export default function RawDataView({ tables }: RawDataViewProps) {
 
     // Find most common values
     const firstColumn = columns[0]
-    const uniqueValues = [...new Set(table.map((row) => row[firstColumn]))].length
+    const uniqueValues = Array.from(new Set(table.map((row) => row[firstColumn]))).length
     summary += `The ${firstColumn} column has ${uniqueValues} unique values.`
 
     return summary
@@ -91,126 +128,95 @@ export default function RawDataView({ tables }: RawDataViewProps) {
         <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
           View raw extracted data in text format with detailed summaries and statistics
         </Typography>
-
-        {/* Data Statistics */}
-        <Grid container spacing={2} sx={{ mb: 4 }}>
-          <Grid item xs={12} sm={6} md={3}>
-            <Card sx={{ bgcolor: "background.default" }}>
-              <CardContent sx={{ textAlign: "center", py: 3 }}>
-                <DataObject sx={{ fontSize: 40, color: "primary.main", mb: 1 }} />
-                <Typography variant="h4" sx={{ fontWeight: 700, color: "primary.main" }}>
-                  {tables.length}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Tables Extracted
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <Card sx={{ bgcolor: "background.default" }}>
-              <CardContent sx={{ textAlign: "center", py: 3 }}>
-                <TextFields sx={{ fontSize: 40, color: "success.main", mb: 1 }} />
-                <Typography variant="h4" sx={{ fontWeight: 700, color: "success.main" }}>
-                  {totalCharacters.toLocaleString()}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Total Characters
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <Card sx={{ bgcolor: "background.default" }}>
-              <CardContent sx={{ textAlign: "center", py: 3 }}>
-                <Typography variant="h4" sx={{ fontWeight: 700, color: "info.main", mb: 1 }}>
-                  {tables.reduce((sum, table) => sum + table.length, 0)}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Total Records
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <Card sx={{ bgcolor: "background.default" }}>
-              <CardContent sx={{ textAlign: "center", py: 3 }}>
-                <Typography variant="h4" sx={{ fontWeight: 700, color: "warning.main", mb: 1 }}>
-                  {tables.length > 0 ? Object.keys(tables[0][0] || {}).length : 0}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Avg Columns
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-        </Grid>
+        <Box sx={{ display: "flex", gap: 2, mb: 2, alignItems: "center" }}>
+          <FileCopy sx={{ mr: 1 }} />
+          <DataExportMenu data={tables[0]} columns={Object.keys(tables[0][0] || {})} fileName={`sift-raw-table-1`} exportOptions={["csv", "json", "txt", "copy", "print"]} />
+          <TextField
+            placeholder="Search in raw data..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            size="small"
+            sx={{ minWidth: 220 }}
+          />
+        </Box>
       </Box>
-
-      {tables.map((table, index) => (
-        <Accordion key={index} sx={{ mb: 2 }}>
-          <AccordionSummary expandIcon={<ExpandMore />}>
-            <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
-              <Box sx={{ display: "flex", alignItems: "center" }}>
-                <TextFields sx={{ mr: 2, color: "primary.main" }} />
-                <Typography variant="h6">Table {index + 1} - Raw Data</Typography>
+      {tables.map((table, index) => {
+        const columns = Object.keys(table[0] || {})
+        const selectedColumns = selectedColumnsByTable[index] || columns
+        const filteredTable = searchTerm
+          ? table.filter((row) =>
+              selectedColumns.some((col) => String(row[col] || "").toLowerCase().includes(searchTerm.toLowerCase())),
+            )
+          : table
+        return (
+          <Accordion key={index} sx={{ mb: 2 }}>
+            <AccordionSummary expandIcon={<ExpandMore />}>
+              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
+                <Box sx={{ display: "flex", alignItems: "center" }}>
+                  <TextFields sx={{ mr: 2, color: "primary.main" }} />
+                  <Typography variant="h6">Table {index + 1} - Raw Data</Typography>
+                </Box>
+                <Box sx={{ display: "flex", gap: 1, mr: 2 }}>
+                  <Chip label={`${filteredTable.length} rows`} size="small" color="primary" />
+                  <Chip label={`${columns.length} columns`} size="small" color="secondary" />
+                </Box>
               </Box>
-              <Box sx={{ display: "flex", gap: 1, mr: 2 }}>
-                <Chip label={`${table.length} rows`} size="small" color="primary" />
-                <Chip
-                  label={`${calculateCharacterCount(table).toLocaleString()} chars`}
-                  size="small"
-                  color="secondary"
+            </AccordionSummary>
+            <AccordionDetails>
+              <Box sx={{ mb: 2, display: "flex", gap: 2, alignItems: "center" }}>
+                <DataExportMenu data={filteredTable} columns={selectedColumns} fileName={`sift-raw-table-${index + 1}`} exportOptions={["csv", "json", "txt", "copy", "print"]} />
+                <ColumnSelector
+                  columns={columns}
+                  selectedColumns={selectedColumns}
+                  onChange={(cols) => setSelectedColumnsByTable((prev) => ({ ...prev, [index]: cols }))}
+                  minColumns={1}
                 />
               </Box>
-            </Box>
-          </AccordionSummary>
-          <AccordionDetails>
-            <Card sx={{ mb: 3 }}>
-              <CardContent>
-                <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2, color: "primary.main" }}>
-                  Data Summary
-                </Typography>
-                <Typography variant="body1" sx={{ lineHeight: 1.6, mb: 2 }}>
-                  {generateSummary(table)}
-                </Typography>
-                <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
-                  <Chip label={`${table.length} records`} size="small" />
-                  <Chip label={`${Object.keys(table[0] || {}).length} columns`} size="small" />
-                  <Chip label={`${calculateCharacterCount(table).toLocaleString()} characters`} size="small" />
-                </Box>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent>
-                <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2, color: "primary.main" }}>
-                  Raw Data Export
-                </Typography>
-                <Box
-                  component="pre"
-                  sx={{
-                    fontFamily: "monospace",
-                    fontSize: "0.875rem",
-                    lineHeight: 1.4,
-                    whiteSpace: "pre-wrap",
-                    wordBreak: "break-word",
-                    maxHeight: 500,
-                    overflow: "auto",
-                    bgcolor: "background.default",
-                    p: 3,
-                    borderRadius: 2,
-                    border: 1,
-                    borderColor: "divider",
-                  }}
-                >
-                  {convertTableToText(table, index)}
-                </Box>
-              </CardContent>
-            </Card>
-          </AccordionDetails>
-        </Accordion>
-      ))}
+              <Card sx={{ mb: 3 }}>
+                <CardContent>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2, color: "primary.main" }}>
+                    Data Summary
+                  </Typography>
+                  <Typography variant="body1" sx={{ lineHeight: 1.6, mb: 2 }}>
+                    {generateSummary(filteredTable)}
+                  </Typography>
+                  <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+                    <Chip label={`${filteredTable.length} records`} size="small" />
+                    <Chip label={`${selectedColumns.length} columns`} size="small" />
+                  </Box>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2, color: "primary.main" }}>
+                    Raw Data Export
+                  </Typography>
+                  <Box
+                    component="pre"
+                    sx={{
+                      fontFamily: "monospace",
+                      fontSize: "1.1rem",
+                      lineHeight: 1.5,
+                      whiteSpace: "pre-wrap",
+                      wordBreak: "break-word",
+                      maxHeight: 500,
+                      overflow: "auto",
+                      color: codeColor,
+                      background: codeBg,
+                      p: 3,
+                      borderRadius: 2,
+                      border: 1,
+                      borderColor: "divider",
+                    }}
+                  >
+                    {convertTableToText(filteredTable, index, selectedColumns)}
+                  </Box>
+                </CardContent>
+              </Card>
+            </AccordionDetails>
+          </Accordion>
+        )
+      })}
     </Container>
   )
 }
