@@ -184,7 +184,7 @@ export default function EnhancedTableView({ tables, viewMode }: EnhancedTableVie
   const handleCloseColumnSelector = () => setColumnSelectorAnchor(null)
   const handleColumnSelectionChange = (cols: string[]) => {
     setSelectedColumnsByTable((prev) => ({ ...prev, [selectedTable]: cols }))
-    setColumnSelectorAnchor(null)
+    // Do not close the menu here
   }
 
   const handleColumnOrderChange = (order: string[]) => {
@@ -569,6 +569,7 @@ export default function EnhancedTableView({ tables, viewMode }: EnhancedTableVie
             onOrderChange={handleColumnOrderChange}
             columnTypes={columnTypes}
             minColumns={1}
+            onDone={handleCloseColumnSelector}
           />
         </Menu>
       </Box>

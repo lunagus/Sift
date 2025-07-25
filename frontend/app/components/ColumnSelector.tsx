@@ -10,9 +10,10 @@ interface ColumnSelectorProps {
   onOrderChange?: (ordered: string[]) => void
   columnTypes?: Record<string, string>
   minColumns?: number // Minimum columns that must be selected
+  onDone?: () => void // Called when user clicks Done
 }
 
-export default function ColumnSelector({ columns, selectedColumns, onChange, onOrderChange, columnTypes = {}, minColumns = 1 }: ColumnSelectorProps) {
+export default function ColumnSelector({ columns, selectedColumns, onChange, onOrderChange, columnTypes = {}, minColumns = 1, onDone }: ColumnSelectorProps) {
   const [orderedColumns, setOrderedColumns] = React.useState<string[]>(columns)
 
   React.useEffect(() => {
@@ -96,7 +97,7 @@ export default function ColumnSelector({ columns, selectedColumns, onChange, onO
         </Droppable>
       </DragDropContext>
       <Divider sx={{ my: 1 }} />
-      <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+      <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", mb: 1 }}>
         <Button size="small" onClick={handleSelectAll} disabled={allSelected} variant="outlined">
           Select All
         </Button>
@@ -106,6 +107,9 @@ export default function ColumnSelector({ columns, selectedColumns, onChange, onO
         <Button size="small" onClick={handleReset} variant="text">
           Reset
         </Button>
+      </Box>
+      <Box sx={{ display: "flex", justifyContent: "flex-end", mt: 2 }}>
+        <Button variant="contained" onClick={onDone} size="small">Done</Button>
       </Box>
     </Box>
   )
